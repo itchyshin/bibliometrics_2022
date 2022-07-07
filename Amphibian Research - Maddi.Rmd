@@ -1,0 +1,43 @@
+
+Maddison Howie - Amphibian Research 
+
+```{Load packages}
+knitr::opts_chunk$set(error = TRUE) #allow some execution errors for demonstration purposes
+knitr::opts_chunk$set(eval = TRUE, echo = TRUE, warning = FALSE, collapse = TRUE, comment = "#>")
+sessionInfo()
+#install.packages("bibliometrix", dependencies=TRUE) ### installs bibliometrix package and dependencies
+library(bibliometrix)	#uploads the package
+library(tidyverse)
+```
+
+```{Load Scopus data}
+# Convert to a bibliometric data frame
+bib <- convert2df("/Users/rohanhowie/bibliometrics_2022/AmphScopus.bib", dbsource = "scopus", format = "bibtex") 
+names(bib)
+dim(bib) #771 observations with 40 variables
+#bib$CR[1] #contains Cited References
+#write.csv(bib, "data//Neal_scopus_full.csv", row.names = FALSE) #if you want to save this data frame as a csv file
+```
+
+```{Load Rayyan data}
+screened <- read.csv("/Users/rohanhowie/bibliometrics_2022/SpeciesLab.csv")
+names(screened)
+dim(screened) 
+#183 observations with 19 variables
+
+screened$notes[1]
+#contains export info, decisions and labels
+
+#filter rows that do not contain the string 'Included' or 'Maybe' in the notes column
+screened %>% filter(!grepl('Excluded', notes)) %>% filter(!grepl('Maybe', notes)) -> screened_included
+dim(screened_included) #none filtered, already filtered out in export process
+
+#extract record labels from notes column - i.e. string after "RAYYAN-LABELS: "
+screened_included$labels <- sub(".*RAYYAN-LABELS: ", "", screened_included$notes)
+table(screened_included$labels)
+
+```
+
+
+```
+
