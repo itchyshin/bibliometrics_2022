@@ -12,7 +12,7 @@ library(tidyverse)
 
 ```{Load Scopus data}
 # Convert to a bibliometric data frame
-bib <- convert2df("/Users/rohanhowie/bibliometrics_2022/AmphScopus.bib", dbsource = "scopus", format = "bibtex") 
+bib <- convert2df("AmphScopus.bib", dbsource = "scopus", format = "bibtex") 
 names(bib)
 dim(bib) #771 observations with 40 variables
 #bib$CR[1] #contains Cited References
@@ -20,7 +20,7 @@ dim(bib) #771 observations with 40 variables
 ```
 
 ```{Load Rayyan data}
-screened <- read.csv("/Users/rohanhowie/bibliometrics_2022/SpeciesLab.csv")
+screened <- read.csv("SpeciesLab.csv")
 names(screened)
 dim(screened) 
 #183 observations with 19 variables
@@ -29,12 +29,36 @@ screened$notes[1]
 #contains export info, decisions and labels
 
 #filter rows that do not contain the string 'Included' or 'Maybe' in the notes column
-screened %>% filter(!grepl('Excluded', notes)) %>% filter(!grepl('Maybe', notes)) -> screened_included
-dim(screened_included) #none filtered, already filtered out in export process
+#screened %>% filter(!grepl('Excluded', notes)) %>% filter(!grepl('Maybe', notes)) -> screened_included
+#dim(screened_included) #none filtered, already filtered out in export process
 
 #extract record labels from notes column - i.e. string after "RAYYAN-LABELS: "
 screened_included$labels <- sub(".*RAYYAN-LABELS: ", "", screened_included$notes)
 table(screened_included$labels)
+
+screened_included$labels <- sub(".*RAYYAN-LABELS: ", "", screened_included$notes)
+
+#gsub(".*STR1 (.+) STR2.*", "\\1", a) #g.*jpg>
+
+screened_included$notes2 <- gsub("Cited.*2022 | RAYYAN-INCLUSION: \\{\"z5297814\"=>\"Included\"\\} | ", "", screened_included$notes) #remove text between word "Cited" and first inclusion label
+screened_included$notes2 <- gsub("ExportDate:30June2022", "", screened_included$notes2) #remove extra field present in a few records
+screened_included$notes2 <- gsub("\\|\\|RAYYAN-LABELS:", ",", screened_included$notes2) #remove extra field present in a few records
+screened_included$notes2 <- sub(",", "", screened_included$notes2) #remove first comma
+
+#using stringr package functions for further processing:
+
+#see how many labels per record:
+max(stringr::str_count(screened_included$notes2, "\\w+"))
+hist(stringr::str_count(screened_included$notes2, "\\w+"))
+
+Split the vector into individual labels
+#option 1
+stringr::str_split(string = screened_included$notes2, pattern = ",") #this splits at "," and creates a list
+
+#option 1
+stringr::str_split_fixed(string = screened_included$notes2, pattern = ",", n = 8) #this splits at "," and creates a table (less useful)
+
+Both options require further processing...
 
 ```
 
