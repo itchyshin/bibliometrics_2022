@@ -1,0 +1,81 @@
+---
+title: "Project-CC&MM"
+author: "Xiaoxuan Jiang"
+date: '2022-07-07'
+output: html_document
+---
+
+```{r install & upload packages, eval=FALSE}
+install.packages("bibliometrix", dependencies=TRUE)
+library(bibliometrix)
+library(tidyverse)
+```
+
+```{r upload Scopus data, eval=TRUE}
+bib <- convert2df("~/Downloads/data/scopus.bib", dbsource = "scopus", format = "bibtex") # Convert to a bibliometric data frame
+names(bib)
+dim(bib) # 963 38 
+#bib$CR[1] #contains Cited References
+#write.csv(bib, "data//Neal_scopus_full.csv", row.names = FALSE) #if you want to save this data frame as a csv file
+```
+
+```{r upload Rayyan data, eval=TRUE}
+screened <- read.csv("~/Downloads/data/rayyan.csv")
+names(screened)
+dim(screened) # 253 19
+
+#screened$notes[1] #contains export info, decisions and labels
+
+#filter rows that do not contain the string 'Included' or 'Maybe' in the notes column
+
+screened %>% filter(!grepl('Excluded', notes)) %>% filter(!grepl('Maybe', notes)) -> screened_included
+dim(screened_included)
+
+#extract record labels from notes column - i.e. string after "RAYYAN-LABELS: "
+screened_included$labels <- sub(".*RAYYAN-LABELS: ", "", screened_included$notes)
+table(screened_included$labels) #one label messed up (missing in Rayyan): screened_included[235,] #key == rayyan-171377150 - should be "Bird,Other,Marine Mammals" 
+
+dim(screened_included) #
+screened_included %>% filter(grepl('scopus', url)) %>% nrow() # 298 records from Scopus (these records have doi contained in their url string), some of these records were excluded during Rayyan screening
+```
+
+```{r}
+#The field 'TI2' will now be used for merging info from onto bib data frame
+bib_url <- left_join(bib, screened_included %>% dplyr::select(url, title, year, journal, labels), by = "url")
+dim(bib_url) #1507 all records, both included and excluded - use lables column to separate these
+table(is.na(bib_url$labels)) #253 records with labels (these were included, if no lebels - not included)
+
+#only keep rows with labels
+bib_url %>% filter(!is.na(labels)) -> bib_url_included
+dim(bib_url_included) #253 records included
+table(bib_url_included$labels) #these can be separated into different columns, one for each group of animals
+names(bib_url_included)
+```
+
+```{r}
+#before joining by title, need to tidy up titles
+
+# Removing all punctuation and extra white spaces in bib object, in order to compare dataframes by Title:
+bib$TI2 <- str_replace_all(bib$TI,"[:punct:]","") %>% str_replace_all(.,"[ ]+", " ") 
+
+# Remove all punctuation and extra white spaces in screened_included object, in order to compare dataframes by Title:
+screened_included$TI2 <- str_to_upper(str_replace_all(screened_included$title,"[:punct:]","")) %>% str_replace_all(.,"[ ]+", " ")
+
+# The field 'TI2' will now be used for merging info from onto bib data frame
+bib_title <- left_join(bib, screened_included %>% dplyr::select(url, title, TI2, year, journal, labels), by = "TI2")
+table(is.na(bib_title$labels)) #283 records with labels, these were included
+
+#only keep rows with labels
+bib_title %>% filter(!is.na(labels)) -> bib_title_included
+dim(bib_title_included) #283 records included
+table(bib_title_included$labels) 
+names(bib_title_included)
+```
+
+```{r}
+# Preliminary descriptive analyses using summary function
+results <- biblioAnalysis(bib_title_included, sep = ";")
+#summary(object = results, k = 10, pause = TRUE) #display a series of summary tables
+plot(results, k = 10, pause = TRUE) #this takes top 10 values from each table
+```
+
