@@ -1,0 +1,238 @@
+
+Maddison Howie - Amphibian Research 
+
+LOADING AND CLEANING DATA
+
+```{Load packages}
+knitr::opts_chunk$set(error = TRUE) #allow some execution errors for demonstration purposes
+knitr::opts_chunk$set(eval = TRUE, echo = TRUE, warning = FALSE, collapse = TRUE, comment = "#>")
+sessionInfo()
+install.packages("bibliometrix", dependencies=TRUE) ### installs bibliometrix package and dependencies
+library(bibliometrix)	#uploads the package
+library(tidyverse)
+```
+
+```{IUCN Data Import}
+IUCN <- read.csv(file = "/Users/rohanhowie/bibliometrics2022/Maddi/Data/IUCNsummary.csv", header=TRUE) #import IUCN dataset
+view(IUCN)
+
+IUCN <- IUCN[c("scientificName","orderName","redlistCategory","populationTrend")] #remove unwanted columns 
+view(IUCN)
+```
+
+```{Load Scopus data}
+# Convert to a bibliometric data frame
+bib <- convert2df("/Users/rohanhowie/bibliometrics2022/Maddi/Data/AmphScopus.bib", dbsource = "scopus", format = "bibtex") #load bibliometric data frame from Scopus 
+dim(bib) #771 observations with 40 variables
+```
+
+```{Load Rayyan data}
+screened <- read.csv("/Users/rohanhowie/bibliometrics2022/Maddi/Data/SpeciesLab.csv") #load screened data frame from Rayyan
+dim(screened) #183 observations with 19 variables
+
+screened$notes[1] #contains export info, decisions and labels
+
+#filter rows that do not contain the string 'Included' or 'Maybe' in the notes column
+screened %>% filter(!grepl('Excluded', notes)) %>% filter(!grepl('Maybe', notes)) -> screened_included
+dim(screened_included) #183 observations, 19 variables
+
+screened_included$labels <- sub(".*RAYYAN-LABELS: ", "", screened_included$notes) #extract record labels from notes column - i.e. string after "RAYYAN-LABELS: "
+
+screened_included$labels[1:10] #view first 10 strings
+
+species_list <- str_split_fixed(screened_included$labels, ","  , 8) #split labels into individual species
+
+species_list <- as.vector(species_list) #put species into a vector
+species_list
+species_list <- species_list[species_list != ""] #take away the 
+species_list
+unique_list <- unique(species_list)
+unique_list
+table(species_list) #visualise the species frequencies
+species_df <- data.frame(table(species_list),stringsAsFactors = FALSE)
+species_df # data frame with species and presence in publications
+
+species_df <- rename(species_df, scientificName = species_list) #rename species variable to 'scientificName' to easily merge with IUCN data frame 
+species_df <- rename(species_df, PublicationFreq = Freq) #rename Freq variable to 'PublicationFreq' for clarification
+
+#TODO
+species_df[species_df == "Bufo americanus"] <- "Anaxyrus americanus" #having troubles changing species name to updates species (from IUCN) - error message : invalid factor level, NA generated 
+
+species_IUCN <- full_join(IUCN, species_df, by="scientificName") #merge IUCN with species data frames 
+species_IUCN$PublicationFreq[is.na(species_IUCN$PublicationFreq)] <- 0 #replace NAs with 0 in frequency column
+```
+
+```{r}
+#Plot species frequency in publications vs. threatened status
+
+ggplot(species_IUCN, aes(x=redlistCategory, y=PublicationFreq)) + 
+  geom_bar(stat = "identity") #bar plot of publication frequency among redlist category - need to update the species with different names in earlier steps 
+
+
+ggplot(species_IUCN, aes(x=populationTrend, y=PublicationFreq)) +
+  geom_bar(stat = "identity") #bar plot of publication frequency among population trend - need to update the species with different names in earlier steps, as well as remove the blank variable that is showing on the plot
+
+```
+
+```{Separate labels for bibliometric coupling data}
+screened_included$notes2 <- gsub("Cited.*2022 | RAYYAN-INCLUSION: \\{\"z5297814\"=>\"Included\"\\} |" , "", screened_included$notes) #remove text between "Cited" and first inclusion label
+screened_included$notes2[1] #visualise line data
+screened_included$notes2 <- gsub("ExportDate:30June2022", "", screened_included$notes2) #remove extra field present in a few records
+screened_included$notes2 <- gsub("\\|\\|RAYYAN-LABELS:", ",", screened_included$notes2) #remove extra field present in a few records
+screened_included$notes2 <- sub(",", "", screened_included$notes2) #remove first comma
+screened_included$notes2[1] #visualise line data
+
+#using stringr package functions for further processing:
+#check numbers of labels per record
+max(stringr::str_count(screened_included$notes2, "\\w+"))
+hist(stringr::str_count(screened_included$notes2, "\\w+"))
+
+#Split vector into individual labels
+stringr::str_split(string = screened_included$notes2, pattern = ",") #this splits at "," and creates a list 
+```
+
+```{Merging data frames}
+#The field 'TI2' will now be used for merging info from onto bib data frame
+bib_url <- left_join(bib, screened_included %>% dplyr::select(url, title, year, journal, notes2), by = "url") #merge scopus data frame with data frame containing screened publications
+dim(bib_url) #1507 all records, both included and excluded - use lables column to separate these
+table(is.na(bib_url$notes2)) #183 records with labels (these were included, if no lebels - not included)
+
+bib_url %>% filter(!is.na(notes2)) -> bib_url_included #only keep rows with labels
+dim(bib_url_included) #183 records included with 44 variables
+table(bib_url_included$notes2) #these can be separated into different columns, one for each group of animals
+names(bib_url_included)
+```
+
+```{Title tidy up and merge data frames}
+#before joining by title, need to tidy up titles
+
+# Removing all punctuation and extra white spaces in bib object, in order to compare dataframes by Title:
+bib$TI2 <- str_replace_all(bib$TI,"[:punct:]","") %>% str_replace_all(.,"[ ]+", " ") 
+
+# Remove all punctuation and extra white spaces in screened_included object, in order to compare dataframes by Title:
+screened_included$TI2 <- str_to_upper(str_replace_all(screened_included$title,"[:punct:]","")) %>% str_replace_all(.,"[ ]+", " ")
+
+# The field 'TI2' will now be used for merging info from onto bib data frame
+bib_title <- left_join(bib, screened_included %>% dplyr::select(url, title, TI2, year, journal,  notes2), by = "TI2")
+table(is.na(bib_title$notes2)) #182 records with labels, these were included
+
+#only keep rows with labels
+bib_title %>% filter(!is.na(notes2)) -> bib_title_included
+dim(bib_title_included) #182 records included
+table(bib_title_included$notes2) 
+names(bib_title_included)
+
+#Analysed 182 records that came from Scopus.
+```
+
+```{Split labels column}
+splitlabels <- str_split_fixed(bib_title_included$notes2, ",", 8)
+splitdf <- as.data.frame(splitlabels)
+
+#swap values incorrectly screened in Rayyan
+splitdf[2, 1] = "Amphibia"
+splitdf[2, 2] = "Mining"
+splitdf[14, 1] = "Anura&Caudata"
+splitdf[14, 2] = "Mining"
+splitdf[22, 1] = "Amphibia"
+splitdf[22, 2] = "Logging"
+splitdf[51, 1] = "Anura&Caudata"
+splitdf[51, 2] = "Agriculture"
+splitdf[99, 1] = "Caudata"
+splitdf[99, 2] = "Mining"
+splitdf[104, 1] = "Anura&Caudata"
+splitdf[104, 2] = "Logging"
+splitdf[143, 1] = "Anura&Caudata"
+splitdf[143, 2] = "Urbanisation"
+splitdf[144, 1] = "Anura&Caudata"
+splitdf[144, 2] = "Deforestation"
+splitdf[151, 1] = "Anura&Caudata"
+splitdf[151, 2] = "Fragmentation"
+splitdf[159, 1] = "Anura&Caudata"
+splitdf[159, 2] = "Agriculture"
+splitdf[161, 1] = "Anura&Caudata"
+splitdf[161, 2] = "Urbanisation"
+
+#combine label df with original df
+screened_with_labels <- bind_cols(bib_title_included, splitdf) #binds new labels to the original data frame - can be used for bibliometric coupling
+
+screened_with_labels <- rename(screened_with_labels, orderName = V1) #rename order variable
+bib_coup <- rename(screened_with_labels, cause = V2) #rename cause variable
+
+```
+
+DATA ANALYSES
+
+```{Basic plots with Scopus df}
+library(RColorBrewer)
+barplot(table(bib_coup$orderName), names.arg=c("Anura", "Amphibia", "Caudata", "Anura&Caudata"),main="Amphibian Order Occurrence in Publications",xlab="Order", ylab="Occurrence", col = brewer.pal(4, "YlGnBu")) #plot of amphibian order occurrence in publications
+
+barplot(table(bib_coup$cause), names.arg=c("Deforestation", "Mining", "Modified Waterbodies", "Urbanisation", "Fragmentation", "Agriculture", "Logging"),las=2, main="Major Focus of Habitat Loss Cause",xlab="Cause of Habitat Loss", ylab="Occurrence", col = brewer.pal(4, "YlGnBu")) #plot of habitat loss causes focused on in publications
+
+ggplot(bib_coup, aes(x=PY)) +   stat_count(geom='line', aes(y=..count..)) #line graph showing publication trend 
+```
+
+```{Basic plots from IUCN}
+
+library(ggplot2)
+barplot(table(IUCN$orderName), names.arg=c("Anura","Caudata", "Gymnophiona"),main="Named Amphibian Species Across Orders",xlab="Order", ylab="Named Species", col = c("#b9e38d", "#a1e9f0", "#d9b1f0")) #bar plot of species named on IUCN separated into their order
+
+IUCN$redlistCategory[IUCN$redlistCategory == "Endangered" | IUCN$redlistCategory == "Vulnerable" | IUCN$redlistCategory == "Critically Endangered"] <- "threatened" #changes all selected categories to 'threatened'
+
+IUCN$redlistCategory[IUCN$redlistCategory == "Least Concern" | IUCN$redlistCategory == "Data Deficient" | IUCN$redlistCategory == "Extinct" | IUCN$redlistCategory == "Near Threatened" | IUCN$redlistCategory == "Extinct in the Wild"] <- "least threatened" #changes all selected categories to 'least threatened'
+
+require(RColorBrewer)
+
+ggplot(IUCN, aes(orderName, fill=redlistCategory)) + geom_bar( position='fill', colour="black") +scale_fill_manual(values=c("#993404", "#FB6A4A")) #plot of threatened status among orders
+
+IUCN[!(IUCN$populationTrend==""), ] #removes blanks
+
+ggplot(IUCN, aes(orderName, fill=populationTrend)) + geom_bar(position='fill') + scale_fill_brewer(palette = "RdYlGn") #stacked bar plot of population trend (i.e. percentage of trends among the orders). Need to remove blank variable. 
+
+```
+
+```{Summary of publications}
+# Preliminary descriptive analyses using summary function
+results <- biblioAnalysis(bib_title_included, sep = ";")
+#summary(object = results, k = 10, pause = TRUE) #display a series of summary tables
+plot(results, k = 10, pause = TRUE) #this takes top 10 values from each table
+```
+
+```{Bibliographic couplings}
+NetMatrix <- biblioNetwork(bib, analysis = "coupling", network = "references", sep = ";")
+net = networkPlot(NetMatrix, weighted = NULL, n = 10, Title = "Papers' bibliographic coupling", type = "fruchterman", size = 5, remove.multiple = TRUE, labelsize = 0.5) #bibliographic coupling for top 10 publications
+
+NetMatrix <- biblioNetwork(bib, analysis = "coupling", network = "authors", sep = ";")
+net = networkPlot(NetMatrix, weighted = NULL, n = 10, Title = "Authors' bibliographic coupling", type = "fruchterman", size = 5, remove.multiple = TRUE, labelsize = 0.8) #bibliographic coupling for top 10 authors
+```
+
+```{Collaborations}
+bib <- metaTagExtraction(bib, Field = "AU_CO", sep = ";") #we need to extract countries from the affiliations first
+NetMatrix <- biblioNetwork(bib, analysis = "collaboration", network = "countries", sep = ";")
+net <- networkPlot(NetMatrix, n = 20, Title = "Country Collaboration", type = "circle", size = TRUE, remove.multiple = FALSE, labelsize = 0.5) # country collaborations (top 20), circle format (can change to "auto" to have scattered format)
+```
+
+```{Keyword occurrences}
+NetMatrix <- biblioNetwork(bib, analysis = "co-occurrences", network = "author_keywords", sep = ";")
+net <- networkPlot(NetMatrix, n = 20, Title = "Keyword co-occurance", type = "fruchterman", size = T, remove.multiple = FALSE, labelsize = 0.7, edgesize = 5) #keyword occurrencestop 20
+
+#conceptual structure of keywords
+CS <- conceptualStructure(bib,field="ID", method="MCA", minDegree=4, clust=8 ,k.max=3, stemming=FALSE, labelsize=10, documents=10)
+
+```
+
+```{Geographical mapping}
+library(sf)
+library(raster)
+spdf <- st_read("/Users/rohanhowie/bibliometrics2022/Maddi/Data/Amphibianpolygons/AMPHIBIANS.shp") #I don't think this way will work --> would be useful if the data was in points instead of polygon. The geographical data is stored in one cell (multiple locations - would need to separate)
+
+#attempt to rasterise data
+r <- raster(nrows=180, ncols=360, xmn=-180, xmx=180, ymn=-90, ymx=90, 
+            crs = "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0", 
+            resolution = 1, vals=NULL) # create a raster 
+rasterdf <- rasterize(spdf, 
+               r,
+               field = "binomial",
+               fun = function (x, ...) length(unique(na.omit(x)))) # this takes too long to process 
+plot(rasterdf)
+```
