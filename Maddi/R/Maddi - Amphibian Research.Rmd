@@ -7,9 +7,15 @@ LOADING AND CLEANING DATA
 knitr::opts_chunk$set(error = TRUE) #allow some execution errors for demonstration purposes
 knitr::opts_chunk$set(eval = TRUE, echo = TRUE, warning = FALSE, collapse = TRUE, comment = "#>")
 sessionInfo()
+
+#install and upload packages:
+
 install.packages("bibliometrix", dependencies=TRUE) ### installs bibliometrix package and dependencies
-library(bibliometrix)	#uploads the package
-library(tidyverse)
+library(bibliometrix)	#uploads the bibliometrix package
+library(tidyverse) #uploads tidyverse package
+library(ggplot2) #uploads ggplot for plotting data 
+library(RColorBrewer) #uploads color brewer package for graph visualisations
+require(RColorBrewer)
 ```
 
 ```{IUCN Data Import}
@@ -55,27 +61,61 @@ species_df # data frame with species and presence in publications
 species_df <- rename(species_df, scientificName = species_list) #rename species variable to 'scientificName' to easily merge with IUCN data frame 
 species_df <- rename(species_df, PublicationFreq = Freq) #rename Freq variable to 'PublicationFreq' for clarification
 
-#TODO
-species_df[species_df == "Bufo americanus"] <- "Anaxyrus americanus" #having troubles changing species name to updates species (from IUCN) - error message : invalid factor level, NA generated 
+#need to rename some species as have changed their name (updated names retrieved from IUCN for consistency)
+
+species_df$scientificName <- recode(species_df$scientificName, 'Bufo americanus' = 'Anaxyrus americanus', 
+                                    'Bufo calamita' = 'Epidalea calamita', 
+                                    'Eleutherodactylus diastema' = 'Diasporus diastema',
+                                    'Eleutherodactylus fitzingeri' = 'Craugastor fitzingeri',
+                                    'Feirana quadranus' = 'Nanorana quadranus',
+                                    'Feirana taihangnica' = 'Nanorana taihangnica',
+                                    'Hyla japonica' = 'Dryophytes japonicus',
+                                    'Hyla microcephala' = 'Dendropsophus microcephalus',
+                                    'Hyla rosenbergi' = 'Boana rosenbergi',
+                                    'Hyla versicolor' = 'Dryophytes versicolor',
+                                    'Leptodactylus tibialis' = 'Leptodactylus fragilis',
+                                    'Mesotriton alpestris' = 'Ichthyosaura alpestris',
+                                    'Rana clamitans' = 'Lithobates clamitans',
+                                    'Rana pipiens' = 'Lithobates pipiens',
+                                    'Rana sylvatica' = 'Lithobates sylvaticus',
+                                    'Rhinella schneideri' = 'Rhinella diptycha',
+                                    'Triturus vulgaris' = 'Lissotriton vulgaris')
+
 
 species_IUCN <- full_join(IUCN, species_df, by="scientificName") #merge IUCN with species data frames 
 species_IUCN$PublicationFreq[is.na(species_IUCN$PublicationFreq)] <- 0 #replace NAs with 0 in frequency column
+
+#'Feirana kangxianensis' has not been listed under IUCN yet as it a new species. Need to fill information in manually. 
+species_IUCN[7301, 2] = "ANURA"
+species_IUCN[7301, 3] = "Data Deficient"
+species_IUCN[7301, 4] = "Data Deficient"
+
+#remove multiple species column for clear visualization of data and comparison 
+species_IUCN <- species_IUCN[-c(7302), ]
 ```
 
-```{r}
+```{Visualising publication frequencies and threatened status}
+#remove 'extinct' and 'extinct in the wild' species - not valuable for study focus
+species_IUCN <- subset(species_IUCN, !(redlistCategory %in% c("Extinct", "Extinct in the Wild"))) #this keeps all rows where the redlistCategory is not "Extinct" or "Extinct in the Wild"
+
 #Plot species frequency in publications vs. threatened status
-
 ggplot(species_IUCN, aes(x=redlistCategory, y=PublicationFreq)) + 
-  geom_bar(stat = "identity") #bar plot of publication frequency among redlist category - need to update the species with different names in earlier steps 
+  geom_bar(stat = "identity") #bar plot of publication frequency among redlist category
+```
 
+
+```{Visualising publication frequencies and population trend}
+#need to remove blanks in population Trend 
+which(species_IUCN=="", arr.ind=TRUE) #find the blanks in the data frame - column 4 (population trend) contains all the blanks
+
+IUCN <- subset(IUCN, !(redlistCategory %in% c("Extinct", "Extinct in the Wild"))) #this keeps all rows where the redlistCategory is not "Extinct" or "Extinct in the Wild" --> this also removes all the blanks
 
 ggplot(species_IUCN, aes(x=populationTrend, y=PublicationFreq)) +
-  geom_bar(stat = "identity") #bar plot of publication frequency among population trend - need to update the species with different names in earlier steps, as well as remove the blank variable that is showing on the plot
-
+  geom_bar(stat = "identity") #bar plot of publication frequency among population trend 
 ```
 
 ```{Separate labels for bibliometric coupling data}
-screened_included$notes2 <- gsub("Cited.*2022 | RAYYAN-INCLUSION: \\{\"z5297814\"=>\"Included\"\\} |" , "", screened_included$notes) #remove text between "Cited" and first inclusion label
+screened_included$notes2 <- gsub("Cited.*2022 | RAYYAN-INCLUSION: \\{\"z5297814\"=>\"Included\"\\} | " , "", screened_included$notes) #remove text between "Cited" and first inclusion label
 screened_included$notes2[1] #visualise line data
 screened_included$notes2 <- gsub("ExportDate:30June2022", "", screened_included$notes2) #remove extra field present in a few records
 screened_included$notes2 <- gsub("\\|\\|RAYYAN-LABELS:", ",", screened_included$notes2) #remove extra field present in a few records
@@ -164,7 +204,6 @@ bib_coup <- rename(screened_with_labels, cause = V2) #rename cause variable
 DATA ANALYSES
 
 ```{Basic plots with Scopus df}
-library(RColorBrewer)
 barplot(table(bib_coup$orderName), names.arg=c("Anura", "Amphibia", "Caudata", "Anura&Caudata"),main="Amphibian Order Occurrence in Publications",xlab="Order", ylab="Occurrence", col = brewer.pal(4, "YlGnBu")) #plot of amphibian order occurrence in publications
 
 barplot(table(bib_coup$cause), names.arg=c("Deforestation", "Mining", "Modified Waterbodies", "Urbanisation", "Fragmentation", "Agriculture", "Logging"),las=2, main="Major Focus of Habitat Loss Cause",xlab="Cause of Habitat Loss", ylab="Occurrence", col = brewer.pal(4, "YlGnBu")) #plot of habitat loss causes focused on in publications
@@ -172,20 +211,26 @@ barplot(table(bib_coup$cause), names.arg=c("Deforestation", "Mining", "Modified 
 ggplot(bib_coup, aes(x=PY)) +   stat_count(geom='line', aes(y=..count..)) #line graph showing publication trend 
 ```
 
-```{Basic plots from IUCN}
-
-library(ggplot2)
+```{BPlot of threatened status among amphibian orders}
 barplot(table(IUCN$orderName), names.arg=c("Anura","Caudata", "Gymnophiona"),main="Named Amphibian Species Across Orders",xlab="Order", ylab="Named Species", col = c("#b9e38d", "#a1e9f0", "#d9b1f0")) #bar plot of species named on IUCN separated into their order
 
-IUCN$redlistCategory[IUCN$redlistCategory == "Endangered" | IUCN$redlistCategory == "Vulnerable" | IUCN$redlistCategory == "Critically Endangered"] <- "threatened" #changes all selected categories to 'threatened'
+IUCN$redlistCategory[IUCN$redlistCategory == "Endangered" | IUCN$redlistCategory == "Vulnerable" | IUCN$redlistCategory == "Critically Endangered"] <- "Threatened" #changes all selected categories to 'threatened'
 
-IUCN$redlistCategory[IUCN$redlistCategory == "Least Concern" | IUCN$redlistCategory == "Data Deficient" | IUCN$redlistCategory == "Extinct" | IUCN$redlistCategory == "Near Threatened" | IUCN$redlistCategory == "Extinct in the Wild"] <- "least threatened" #changes all selected categories to 'least threatened'
+IUCN$redlistCategory[IUCN$redlistCategory == "Least Concern" | IUCN$redlistCategory == "Near Threatened"] <- "Least Threatened" #changes all selected categories to 'least threatened'
 
-require(RColorBrewer)
+IUCN$redlistCategory[IUCN$redlistCategory == "Extinct" | IUCN$redlistCategory == "Extinct in the Wild"] <- "Extinct" #changes all selected categories to "Extinct"
 
-ggplot(IUCN, aes(orderName, fill=redlistCategory)) + geom_bar( position='fill', colour="black") +scale_fill_manual(values=c("#993404", "#FB6A4A")) #plot of threatened status among orders
+IUCN$redlistCategory[IUCN$redlistCategory == "Data Deficient"] <- "Data Deficient/Unknown" #changes all selected categories to "Data Deficient/Unknown"
 
-IUCN[!(IUCN$populationTrend==""), ] #removes blanks
+ggplot(IUCN, aes(orderName, fill=redlistCategory)) + geom_bar(position='fill', colour="black") +scale_fill_brewer(palette = "RdYlGn") #plot of threatened status among orders
+```
+
+
+```{Plot of population trend among amphibian orders}
+which(IUCN=="", arr.ind=TRUE) #this checks for blanks in the data frame - all blanks are contained in population trend column 
+
+IUCN$populationTrend[IUCN$populationTrend==""] <- "Unknown" #change blanks to 'Unknown' - these are most likely 'unspecified' on the IUCN website 
+
 
 ggplot(IUCN, aes(orderName, fill=populationTrend)) + geom_bar(position='fill') + scale_fill_brewer(palette = "RdYlGn") #stacked bar plot of population trend (i.e. percentage of trends among the orders). Need to remove blank variable. 
 
@@ -206,10 +251,14 @@ NetMatrix <- biblioNetwork(bib, analysis = "coupling", network = "authors", sep 
 net = networkPlot(NetMatrix, weighted = NULL, n = 10, Title = "Authors' bibliographic coupling", type = "fruchterman", size = 5, remove.multiple = TRUE, labelsize = 0.8) #bibliographic coupling for top 10 authors
 ```
 
-```{Collaborations}
+```{Country collaborations}
 bib <- metaTagExtraction(bib, Field = "AU_CO", sep = ";") #we need to extract countries from the affiliations first
 NetMatrix <- biblioNetwork(bib, analysis = "collaboration", network = "countries", sep = ";")
 net <- networkPlot(NetMatrix, n = 20, Title = "Country Collaboration", type = "circle", size = TRUE, remove.multiple = FALSE, labelsize = 0.5) # country collaborations (top 20), circle format (can change to "auto" to have scattered format)
+
+#Chord diagram of country collaboration
+#TODO
+
 ```
 
 ```{Keyword occurrences}
@@ -221,18 +270,3 @@ CS <- conceptualStructure(bib,field="ID", method="MCA", minDegree=4, clust=8 ,k.
 
 ```
 
-```{Geographical mapping}
-library(sf)
-library(raster)
-spdf <- st_read("/Users/rohanhowie/bibliometrics2022/Maddi/Data/Amphibianpolygons/AMPHIBIANS.shp") #I don't think this way will work --> would be useful if the data was in points instead of polygon. The geographical data is stored in one cell (multiple locations - would need to separate)
-
-#attempt to rasterise data
-r <- raster(nrows=180, ncols=360, xmn=-180, xmx=180, ymn=-90, ymx=90, 
-            crs = "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0", 
-            resolution = 1, vals=NULL) # create a raster 
-rasterdf <- rasterize(spdf, 
-               r,
-               field = "binomial",
-               fun = function (x, ...) length(unique(na.omit(x)))) # this takes too long to process 
-plot(rasterdf)
-```
