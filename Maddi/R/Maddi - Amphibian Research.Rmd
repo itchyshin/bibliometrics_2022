@@ -252,14 +252,41 @@ net = networkPlot(NetMatrix, weighted = NULL, n = 10, Title = "Authors' bibliogr
 ```
 
 ```{Country collaborations}
-bib <- metaTagExtraction(bib, Field = "AU_CO", sep = ";") #we need to extract countries from the affiliations first
-NetMatrix <- biblioNetwork(bib, analysis = "collaboration", network = "countries", sep = ";")
-net <- networkPlot(NetMatrix, n = 20, Title = "Country Collaboration", type = "circle", size = TRUE, remove.multiple = FALSE, labelsize = 0.5) # country collaborations (top 20), circle format (can change to "auto" to have scattered format)
 
-#Chord diagram of country collaboration
+bib <- metaTagExtraction(bib, Field = "AU_CO", sep = ";") #we need to extract countries from the affiliations first
+
+#Chord diagram of country collaboration (cc)
 #TODO
+bib_cc <- metaTagExtraction(bib, Field = "AU1_CO", sep = ";") 
+bib_cc <- metaTagExtraction(bib_cc, Field = "AU_CO", sep = ";") 
+NetMatrix2 <- biblioNetwork(bib_cc, analysis = "collaboration", 
+                           network = "countries", sep = ";")
+
+net_matrix2 <- as.matrix(NetMatrix2)
+#net_matrix2 <-net_matrix[rownames(NetMatrix2), countries]
+diag(net_matrix2) <- 0 #get rid of collaboration with same country
+net_matrix2
+
+# getting rid of lower triangle (as this is duplication of info)
+net_matrix2[lower.tri(net_matrix2)] <- 0 
+
+#colnames(net_matrix2) - change to title case:
+colnames(net_matrix2) <- str_to_title(colnames(net_matrix2))
+#rownames(net_matrix2) - change to title case:
+rownames(net_matrix2) <- str_to_title(rownames(net_matrix2))
+#Fix "Usa" to "USA" :
+colnames(net_matrix2)[colnames(net_matrix2) == "Usa"] <- "USA"
+rownames(net_matrix2)[rownames(net_matrix2) == "Usa"] <- "USA"
+#change "UNITED KINGDOM" to "UK" for easier plotting:
+colnames(net_matrix2)[colnames(net_matrix2) == "United Kingdom"] <- "UK"
+rownames(net_matrix2)[rownames(net_matrix2) == "United Kingdom"] <- "UK"
+
+library(circlize)
+library(igraph)
+circos.clear()
 
 ```
+
 
 ```{Keyword occurrences}
 NetMatrix <- biblioNetwork(bib, analysis = "co-occurrences", network = "author_keywords", sep = ";")
