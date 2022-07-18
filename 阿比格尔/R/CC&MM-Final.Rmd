@@ -1,0 +1,249 @@
+---
+title: "CC&MM-Final"
+author: "Xiaoxuan Jiang"
+date: '2022-07-17'
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#install & upload packages
+
+install.packages("bibliometrix", dependencies=TRUE)
+library(bibliometrix)
+library(tidyverse)
+```
+
+```{r}
+#upload Scopus data
+
+bib <- convert2df("~/Downloads/data/scopus.bib", dbsource = "scopus", format = "bibtex") # Convert to a bibliometric data frame
+names(bib)
+dim(bib) # 963 38 
+#bib$CR[1] #contains Cited References
+#write.csv(bib, "data//Neal_scopus_full.csv", row.names = FALSE) #if you want to save this data frame as a csv file
+```
+
+```{r}
+#upload Rayyan data
+
+screened <- read.csv("~/Downloads/data/rayyan.csv")
+names(screened)
+dim(screened) # 253 19
+
+#screened$notes[1] #contains export info, decisions and labels
+
+#filter rows that do not contain the string 'Included' or 'Maybe' in the notes column
+
+screened %>% filter(!grepl('Excluded', notes)) %>% filter(!grepl('Maybe', notes)) -> screened_included
+dim(screened_included)
+
+#extract record labels from notes column - i.e. string after "RAYYAN-LABELS: "
+screened_included$labels <- sub(".*RAYYAN-LABELS: ", "", screened_included$notes)
+screened_included$labels[1:10] #view first 10 strings
+labels_list <- str_split_fixed(screened_included$labels, "," , 8) #split labels into individual species
+labels_list <- as.vector(labels_list) #put species into a vector
+labels_list
+labels_list <- labels_list[labels_list != ""] #take away the 
+labels_list 
+unique_list <- unique(labels_list)
+unique_list
+table(labels_list) #visualise the species frequencies
+labels_df <- data.frame(table(labels_list),stringsAsFactors = FALSE)
+labels_df # data frame with species and presence in publications
+
+
+table(screened_included$labels) #one label messed up (missing in Rayyan): screened_included[235,] #key == rayyan-171377150 - should be "Bird,Other,Marine Mammals" 
+
+dim(screened_included) #
+screened_included %>% filter(grepl('scopus', url)) %>% nrow() # 298 records from Scopus (these records have doi contained in their url string), some of these records were excluded during Rayyan screening
+```
+
+```{r}
+#The field 'TI2' will now be used for merging info from onto bib data frame
+bib_url <- left_join(bib, screened_included %>% dplyr::select(url, title, year, journal, labels), by = "url")
+dim(bib_url) #1507 all records, both included and excluded - use lables column to separate these
+table(is.na(bib_url$labels)) #253 records with labels (these were included, if no lebels - not included)
+
+#only keep rows with labels
+bib_url %>% filter(!is.na(labels)) -> bib_url_included
+dim(bib_url_included) #253 records included
+table(bib_url_included$labels) #these can be separated into different columns, one for each group of animals
+names(bib_url_included)
+```
+
+```{r}
+#before joining by title, need to tidy up titles
+
+# Removing all punctuation and extra white spaces in bib object, in order to compare dataframes by Title:
+bib$TI2 <- str_replace_all(bib$TI,"[:punct:]","") %>% str_replace_all(.,"[ ]+", " ") 
+
+# Remove all punctuation and extra white spaces in screened_included object, in order to compare dataframes by Title:
+screened_included$TI2 <- str_to_upper(str_replace_all(screened_included$title,"[:punct:]","")) %>% str_replace_all(.,"[ ]+", " ")
+
+# The field 'TI2' will now be used for merging info from onto bib data frame
+bib_title <- left_join(bib, screened_included %>% dplyr::select(url, title, TI2, year, journal, labels), by = "TI2")
+table(is.na(bib_title$labels)) #283 records with labels, these were included
+
+#only keep rows with labels
+bib_title %>% filter(!is.na(labels)) -> bib_title_included
+dim(bib_title_included) #283 records included
+table(bib_title_included$labels) 
+names(bib_title_included)
+```
+
+```{r}
+#Basic information of publications
+
+# Preliminary descriptive analyses using summary function
+results <- biblioAnalysis(bib_title_included, sep = ";")
+
+#summary(object = results, k = 10, pause = TRUE) #display a series of summary tables
+plot(results, k = 10, pause = TRUE) #this takes top 10 values from each table
+#5 diagrams can be used in basic data analysis
+```
+
+```{r}
+#Country Scientific Collaboration
+
+bib_title_included <- metaTagExtraction(bib_title_included, Field = "AU_CO", sep = ";") #we need to extract countries from the affiliations first
+NetMatrix <- biblioNetwork(bib_title_included, analysis = "collaboration", network = "countries", sep = ";")
+net <- networkPlot(NetMatrix, n = 19, Title = "Country Collaboration", type = "auto", size = TRUE, remove.multiple = FALSE, labelsize = 0.5)
+```
+
+```{r}
+#Co-Word Analysis ID
+
+CS <- conceptualStructure(bib_title_included, field = "ID", minDegree = 20, k.max = 5, stemming = FALSE, labelsize = 10)
+```
+
+```{r}
+# Title Co-occurance
+
+TE <- termExtraction(bib_title_included, Field = "TI", ngrams = 1,
+remove.numbers=TRUE, remove.terms=NULL, keep.terms=NULL, verbose=TRUE)
+
+NetMatrix <- biblioNetwork(TE, analysis = "co-occurrences", 
+network = "titles", sep = ";")
+
+net <- networkPlot(NetMatrix, n = 40, type = "fruchterman", Title = "Titles Co-occurance",size = T, remove.multiple = FALSE, labelsize = 0.7, edgesize = 5) 
+```
+
+```{r}
+# Abstract Co-occurance
+
+TE2 <- termExtraction(bib_title_included, Field = "DE", ngrams = 1,
+remove.numbers=TRUE, remove.terms=NULL, keep.terms=NULL, verbose=TRUE)
+
+NetMatrix <- biblioNetwork(TE2, analysis = "co-occurrences", 
+network = "author_keywords", sep = ";")
+
+net <- networkPlot(NetMatrix, n = 30, type = "fruchterman", Title = "Abstracts Co-occurance",size = T, remove.multiple = FALSE, labelsize = 0.7, edgesize = 5) 
+```
+
+```{r}
+#wordcloud of labels
+
+library(wordcloud2)
+wordcloud2(labels_df, shuffle = TRUE, size = 0.5, color = 'random-dark', shape = 'circle')
+```
+
+```{r}
+#wordcloud of keywords step 1_split the keywords
+
+bib_title_included$DE[1:10] #view first 10 strings
+keywords_list <- str_split_fixed(bib_title_included$DE, ";" , 8) #split labels into individual species
+keywords_list <- as.vector(keywords_list) #put species into a vector
+keywords_list
+keywords_list <- keywords_list[keywords_list != ""] #take away the 
+keywords_list 
+unique_list <- unique(keywords_list)
+unique_list
+table(keywords_list) #visualise the species frequencies
+keywords_df <- data.frame(table(keywords_list),stringsAsFactors = FALSE)
+keywords_df # data frame with species and presence in publications
+```
+
+```{r}
+#wordcloud of keywords step 2
+
+library(wordcloud2)
+keywords_used <- keywords_df[1:400, ]
+wordcloud2(keywords_used, shuffle = TRUE, size = 1, color = 'random-dark', shape = 'circle')
+```
+
+```{r}
+#Chord Diagram of countries Step 1
+
+bib_title_included <- metaTagExtraction(bib_title_included, Field = "AU_CO", sep = ";") #we need to extract countries from the affiliations first
+NetMatrix <- biblioNetwork(bib_title_included, analysis = "collaboration", network = "countries", sep = ";")
+net <- networkPlot(NetMatrix, n = 19, Title = "Country Collaboration", type = "auto", size = TRUE, remove.multiple = FALSE, labelsize = 0.5)
+
+net_matrix <- as.matrix(NetMatrix)
+#net_matrix <-net_matrix[rownames(NetMatrix), countries]
+diag(net_matrix) <- 0 #get rid of collaboration with same country
+net_matrix
+# getting rid of lower triangle (as this is duplication of info)
+net_matrix[lower.tri(net_matrix)] <- 0 
+#colnames(net_matrix) - change to title case:
+colnames(net_matrix) <- str_to_title(colnames(net_matrix))
+#rownames(net_matrix) - change to title case:
+rownames(net_matrix) <- str_to_title(rownames(net_matrix))
+#Fix "Usa" to "USA" :
+colnames(net_matrix)[colnames(net_matrix) == "Usa"] <- "USA"
+rownames(net_matrix)[rownames(net_matrix) == "Usa"] <- "USA"
+#change "UNITED KINGDOM" to "UK" for easier plotting:
+colnames(net_matrix)[colnames(net_matrix) == "United Kingdom"] <- "UK"
+rownames(net_matrix)[rownames(net_matrix) == "United Kingdom"] <- "UK"
+```
+
+```{r}
+#Chord Diagram of countries Step 2
+
+install.packages ( "circlize" )
+library(circlize)
+library(igraph)
+circos.clear()
+my.cols2 <- c(USA = "#DCDCDC", Australia = "#000000", Netherlands = "#A9A9A9", UK = "#2F4F4F", Brazil = "#C0C0C0", Canada = "slategray", Newzealand = "gainsboro", France = "#778899", Germany = "#808080",Italy = "#696969", Argentina = "#DCDCDC", China = "#000000", Belgium = "#A9A9A9", Sweden = "#2F4F4F", Iran = "#C0C0C0", Mexico = "#778899", Poland = "#A9A9A9")
+fig1 <- chordDiagram(net_matrix, annotationTrack = "grid", preAllocateTracks = 1, grid.col = my.cols2)
+circos.trackPlotRegion(track.index = 1, panel.fun = function(x, y) {
+  xlim = get.cell.meta.data("xlim")
+  ylim = get.cell.meta.data("ylim")
+  sector.name = get.cell.meta.data("sector.index")
+  circos.text(mean(xlim), ylim[1] + .1, sector.name, facing = "clockwise", niceFacing = TRUE, adj = c(0, 0.5))
+  circos.axis(h = "top", labels.cex = 0.5, major.tick.percentage = 0.2, sector.index = sector.name, track.index = 2)
+}, bg.border = NA)
+```
+
+```{r}
+#Country of first author  affiliation - map
+
+library(ggthemes)
+library (cowplot)
+
+bib_title_included %>% group_by(AU_CO) %>% count() %>% filter(!is.na(AU_CO)) -> firstcountrycounts
+world_map <- map_data("world") %>% 
+  filter(! long > 180)
+
+firstcountrycounts$region <- str_to_title(firstcountrycounts$AU_CO)
+firstcountrycounts$region[firstcountrycounts$region == "Usa"] <- "USA" #Fix "Usa" to "USA" :
+firstcountrycounts$region[firstcountrycounts$region == "United Kingdom"] <- "UK" #fix to "UK"
+emptymap <- tibble(region = unique(world_map$region), n = rep(0,length(unique(world_map$region)))) #create table with all counts as 0
+
+fullmap <- left_join(emptymap, firstcountrycounts, by = "region") #join with actual counts table
+fullmap$n <- fullmap$n.x + fullmap$n.y # make new column for fixed counts
+fullmap$n[is.na(fullmap$n)] <- 0 #change NA to 0 for regions with no counts
+
+Fig8 <- fullmap %>% 
+  ggplot(aes(fill = n, map_id = region)) +
+  geom_map(map = world_map) +
+  expand_limits(x = world_map$long, y = world_map$lat) +
+  theme_map(line_size = 0.5) + 
+  theme(legend.position="right") +
+  scale_fill_gradient(low = "#FEE08B", high = "#D53E4F",
+ limits = c(1, 12),
+      guide = guide_colorbar(direction = "vertical.")) +
+  guides(fill = guide_colourbar(barwidth = unit(15, units = "mm"), barheight = unit(20, units = "mm")))
+Fig8
+```
