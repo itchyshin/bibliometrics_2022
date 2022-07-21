@@ -91,16 +91,27 @@ species_IUCN[7301, 3] = "Data Deficient"
 species_IUCN[7301, 4] = "Data Deficient"
 
 #remove multiple species column for clear visualization of data and comparison 
-species_IUCN <- species_IUCN[-c(7302), ]
+species_IUCN <- species_IUCN[-c(7302), ] #make a note in report that 94 publications were removed due to being dedicated to multiple species
 ```
 
 ```{Visualising publication frequencies and threatened status}
 #remove 'extinct' and 'extinct in the wild' species - not valuable for study focus
 species_IUCN <- subset(species_IUCN, !(redlistCategory %in% c("Extinct", "Extinct in the Wild"))) #this keeps all rows where the redlistCategory is not "Extinct" or "Extinct in the Wild"
 
-#Plot species frequency in publications vs. threatened status
-ggplot(species_IUCN, aes(x=redlistCategory, y=PublicationFreq)) + 
-  geom_bar(stat = "identity") #bar plot of publication frequency among redlist category
+#Plot species frequency in publications vs. threatened status:
+
+species_IUCN$redlistCategory <- factor(species_IUCN$redlistCategory, levels = c("Critically Endangered", "Endangered", "Vulnerable", "Near Threatened", "Least Concern", "Data Deficient")) #reorder the redlist categories
+
+redlist.plot <- ggplot(species_IUCN,aes(redlistCategory,PublicationFreq,fill=redlistCategory))+geom_bar(stat="identity")+theme(legend.position="none")+scale_fill_brewer(palette="Set1") #create plot
+
+plot.themes <- theme(
+  plot.title = element_text(family = "Arial", size = (13), hjust = 0.5),
+  axis.title = element_text(family = "Arial", face = "bold", size = (12), colour = "black"),
+  axis.text = element_text(family = "Arial", colour = "black", size = (10))
+) #set title and label factors
+
+print(redlist.plot + plot.themes + labs(title = "Publication Frequency of Amphibians \nBased on Threatened Status", y = "Frequency", x = "Red List Category")) + coord_flip()
+#print plot with themes and title names 
 ```
 
 
@@ -108,13 +119,29 @@ ggplot(species_IUCN, aes(x=redlistCategory, y=PublicationFreq)) +
 #need to remove blanks in population Trend 
 which(species_IUCN=="", arr.ind=TRUE) #find the blanks in the data frame - column 4 (population trend) contains all the blanks
 
-IUCN <- subset(IUCN, !(redlistCategory %in% c("Extinct", "Extinct in the Wild"))) #this keeps all rows where the redlistCategory is not "Extinct" or "Extinct in the Wild" --> this also removes all the blanks
+species_IUCN <- subset(species_IUCN, !(redlistCategory %in% c("Extinct", "Extinct in the Wild"))) #this keeps all rows where the redlistCategory is not "Extinct" or "Extinct in the Wild" 
 
-ggplot(species_IUCN, aes(x=populationTrend, y=PublicationFreq)) +
-  geom_bar(stat = "identity") #bar plot of publication frequency among population trend 
+#need to fix blank cells 
+species_IUCN$populationTrend[species_IUCN$populationTrend==""] <- "Unknown" #change blanks to 'Unknown' - these are most likely 'unspecified' on the IUCN website 
+
+species_IUCN$populationTrend <- factor(species_IUCN$populationTrend, levels = c("Decreasing", "Stable", "Increasing", "Data Deficient", "Unknown")) #reorder the population trend categories
+
+#Plot species frequency in publications vs. population trend:
+                              
+trend.plot <- ggplot(species_IUCN,aes(populationTrend,PublicationFreq,fill=populationTrend))+geom_bar(stat="identity")+theme(legend.position="none")+scale_fill_brewer(palette="Set1") #create plot
+
+plot.themes <- theme(
+  plot.title = element_text(family = "Arial", size = (13), hjust = 0.5),
+  axis.title = element_text(family = "Arial", face = "bold", size = (12), colour = "black"),
+  axis.text = element_text(family = "Arial", colour = "black", size = (10))
+) #set title and label factors
+
+print(trend.plot + plot.themes + labs(title = "Publication Frequency of Amphibians \nBased on Population Trend", y = "Frequency", x = "Population Trend")) #print plot with themes and title names
 ```
 
-```{Separate labels for bibliometric coupling data}
+
+```{Visualising publication frequencies and population trend}
+#Separate labels for bibliometric coupling data
 screened_included$notes2 <- gsub("Cited.*2022 | RAYYAN-INCLUSION: \\{\"z5297814\"=>\"Included\"\\} | " , "", screened_included$notes) #remove text between "Cited" and first inclusion label
 screened_included$notes2[1] #visualise line data
 screened_included$notes2 <- gsub("ExportDate:30June2022", "", screened_included$notes2) #remove extra field present in a few records
@@ -203,17 +230,57 @@ bib_coup <- rename(screened_with_labels, cause = V2) #rename cause variable
 
 DATA ANALYSES
 
-```{Basic plots with Scopus df}
-barplot(table(bib_coup$orderName), names.arg=c("Anura", "Amphibia", "Caudata", "Anura&Caudata"),main="Amphibian Order Occurrence in Publications",xlab="Order", ylab="Occurrence", col = brewer.pal(4, "YlGnBu")) #plot of amphibian order occurrence in publications
+```{Amphibian Orders in Publications}
+#Plot Amphibian Order occurrences in publications:
 
-barplot(table(bib_coup$cause), names.arg=c("Deforestation", "Mining", "Modified Waterbodies", "Urbanisation", "Fragmentation", "Agriculture", "Logging"),las=2, main="Major Focus of Habitat Loss Cause",xlab="Cause of Habitat Loss", ylab="Occurrence", col = brewer.pal(4, "YlGnBu")) #plot of habitat loss causes focused on in publications
+bib_coup$orderName <- factor(bib_coup$orderName, levels = c("Caudata", "Anura", "Anura&Caudata", "Amphibia")) #reorder amphibian groups
 
-ggplot(bib_coup, aes(x=PY)) +   stat_count(geom='line', aes(y=..count..)) #line graph showing publication trend 
+order.plot <- ggplot(data=bib_coup)+ geom_bar(aes(x= orderName, fill=orderName)) + theme(legend.position="none")+ geom_label(aes(x= orderName,label=..count..), stat='count') #create plot 
+
+plot.themes <- theme(
+  plot.title = element_text(family = "Arial", size = (13), hjust = 0.5),
+  axis.title = element_text(family = "Arial", face = "bold", size = (12), colour = "black"),
+  axis.text = element_text(family = "Arial", colour = "black", size = (10))
+) #set title and label factors
+
+print(order.plot + plot.themes + labs(title = "Amphibian Order Focus in Publications", y = "Order", x = "Frequency")) +coord_flip() #print plot with themes and title names
+```
+
+```{Habitat loss causes in publications}
+
+#Plot habitat loss causes focused on in publications:
+
+cause.plot <- ggplot(data=bib_coup)+ geom_bar(aes(x= cause, fill=cause)) + theme(legend.position="none")+ geom_label(aes(x= cause,label=..count..), stat='count') #create plot 
+
+plot.themes <- theme(
+  plot.title = element_text(family = "Arial", size = (13), hjust = 0.5),
+  axis.title = element_text(family = "Arial", face = "bold", size = (12), colour = "black"),
+  axis.text = element_text(family = "Arial", colour = "black", size = (10))
+) #set title and label factors
+
+print(cause.plot + plot.themes + labs(title = "Causes of Habitat Loss in Publications", y = "Causes of Habitat Loss", x = "Frequency")) + coord_flip() #print plot with themes and title names
 ```
 
 ```{BPlot of threatened status among amphibian orders}
-barplot(table(IUCN$orderName), names.arg=c("Anura","Caudata", "Gymnophiona"),main="Named Amphibian Species Across Orders",xlab="Order", ylab="Named Species", col = c("#b9e38d", "#a1e9f0", "#d9b1f0")) #bar plot of species named on IUCN separated into their order
+#Plot # described species in each order
 
+IUCN$orderName[IUCN$orderName=="ANURA"] <- "Anura"
+IUCN$orderName[IUCN$orderName=="CAUDATA"] <- "Caudata"
+IUCN$orderName[IUCN$orderName=="GYMNOPHIONA"] <- "Gymnophiona"
+#change format of order names to match studied species (scopus) data frame
+
+described.plot <- ggplot(data=IUCN)+ geom_bar(aes(x= orderName, fill=orderName)) + theme(legend.position="none")+ geom_label(aes(x= orderName,label=..count..), stat='count') #create plot 
+
+plot.themes <- theme(
+  plot.title = element_text(family = "Arial", size = (13), hjust = 0.5),
+  axis.title = element_text(family = "Arial", face = "bold", size = (12), colour = "black"),
+  axis.text = element_text(family = "Arial", colour = "black", size = (10))
+) #set title and label factors
+
+print(described.plot + plot.themes + labs(title = "Described Amphibian Species Among Orders", y = "Number of Species", x = "Order")) + coord_flip() #print plot with themes and title names
+```
+
+```{BPlot of threatened status among amphibian orders}
 IUCN$redlistCategory[IUCN$redlistCategory == "Endangered" | IUCN$redlistCategory == "Vulnerable" | IUCN$redlistCategory == "Critically Endangered"] <- "Threatened" #changes all selected categories to 'threatened'
 
 IUCN$redlistCategory[IUCN$redlistCategory == "Least Concern" | IUCN$redlistCategory == "Near Threatened"] <- "Least Threatened" #changes all selected categories to 'least threatened'
@@ -222,17 +289,61 @@ IUCN$redlistCategory[IUCN$redlistCategory == "Extinct" | IUCN$redlistCategory ==
 
 IUCN$redlistCategory[IUCN$redlistCategory == "Data Deficient"] <- "Data Deficient/Unknown" #changes all selected categories to "Data Deficient/Unknown"
 
-ggplot(IUCN, aes(orderName, fill=redlistCategory)) + geom_bar(position='fill', colour="black") +scale_fill_brewer(palette = "RdYlGn") #plot of threatened status among orders
+threatened.plot <- ggplot(IUCN, aes(orderName, fill=redlistCategory)) + geom_bar(position='fill') + scale_fill_brewer(palette = "Paired") #plot of threatened status among orders
+
+plot.themes <- theme(
+  plot.title = element_text(family = "Arial", size = (13), hjust = 0.5),
+  axis.title = element_text(family = "Arial", face = "bold", size = (12), colour = "black"),
+  axis.text = element_text(family = "Arial", colour = "black", size = (10))
+) #set title and label factors
+
+print(threatened.plot + plot.themes + labs(title = "Percentage of Threatened Category \nWithin Amphibian Orders", y = "Percent (%)", x = "Order")) + labs(fill='Threatened Category') #print plot with themes and title names
 ```
 
+```{Combine studied and described plots}
 
-```{Plot of population trend among amphibian orders}
-which(IUCN=="", arr.ind=TRUE) #this checks for blanks in the data frame - all blanks are contained in population trend column 
+library(patchwork) # for combining two plots
 
-IUCN$populationTrend[IUCN$populationTrend==""] <- "Unknown" #change blanks to 'Unknown' - these are most likely 'unspecified' on the IUCN website 
+plot.themes2 <- theme(
+  plot.title = element_text(family = "Arial", size = (13)),
+  axis.title = element_text(family = "Arial", face = "bold", size = (10), colour = "black"),
+  axis.text = element_text(family = "Arial", colour = "black", size = (8))
+) #set title and label factors
 
+described <- ggplot(data=IUCN)+ geom_bar(aes(x= orderName, fill=orderName)) + theme(legend.position="none") + plot.themes2 + labs(title = "Described Species", y = "Number of Species", x = "Order") + coord_flip() #described species
 
-ggplot(IUCN, aes(orderName, fill=populationTrend)) + geom_bar(position='fill') + scale_fill_brewer(palette = "RdYlGn") #stacked bar plot of population trend (i.e. percentage of trends among the orders). Need to remove blank variable. 
+studied <- ggplot(data=bib_coup)+ geom_bar(aes(x= orderName, fill=orderName)) + theme(legend.position="none")+ plot.themes2 + labs(title = "Studied Species", y = "Number of Species", x = "Order") + coord_flip() #studied species 
+
+patchwork1 <- studied / described
+
+patchwork1 + plot_annotation(
+  title = 'Described vs. Studied Amphibian Species Across Orders')
+```
+
+```{Publication trend plot}
+
+#Plot publication trend:
+
+#TODO
+#Plot publication trend showing orders
+ggplot(bib_coup, aes(x=PY, col = orderName)) +  stat_count(geom='line', aes(y=..count..)) + plot.themes + labs(title="Amphibian Publication Trend", y = "Publications", x = "Year")+scale_colour_discrete("Order")  #line graph showing order publication trend --> want to make this into an area chart
+
+trend.df <- tidyr::expand(bib_coup, orderName, PY = 1980:2022)
+trend.df
+
+trend.df2 <- trend.df %>%
+  left_join(bib_coup, by = c("orderName", "PY")) %>%
+  replace_na(list(count = 0)) %>%  # Replace NA with zeros
+  group_by(orderName, PY) %>%
+  arrange(orderName, PY) %>%  # Arrange by year so adding works
+  group_by(orderName) %>%
+  mutate(aggcount = cumsum(count)) #trying to create rows as counts to create an area plot - stuck with this code, Error in mutate
+
+ggplot(aes(x = PY, y = aggcount, fill = orderName)) +
+  geom_area() #plot the area chart
+
+ pubtrend2 <- ggplot(bib_coup, aes(x=PY, fill = orderName))
+ pubtrend2 + geom_area(stat="bin") #this is similar to what I want but is coming up with an error - "`stat_bin()` using `bins = 30`. Pick better value with `binwidth`". Doesn't look like the original publication trend plot.  
 
 ```
 
@@ -251,49 +362,164 @@ NetMatrix <- biblioNetwork(bib, analysis = "coupling", network = "authors", sep 
 net = networkPlot(NetMatrix, weighted = NULL, n = 10, Title = "Authors' bibliographic coupling", type = "fruchterman", size = 5, remove.multiple = TRUE, labelsize = 0.8) #bibliographic coupling for top 10 authors
 ```
 
+
+```{author collaborations}
+
+bib_au <- metaTagExtraction(bib_coup, Field = "AU", sep = ";") #we need to extract countries from the affiliations first
+NetMatrix <- biblioNetwork(bib_au, analysis = "coupling", network = "authors", sep = ";")
+
+results <- biblioAnalysis(bib_au, sep = ";")
+S2 <- summary(object = results, k = 20 ,pause = FALSE) 
+MostProdAuthors <- S2$MostProdAuthors #extract names of authors
+MostProdAuthors$Articles <- as.numeric(MostProdAuthors$Articles) #change column to numeric
+#countries <- MostProdCountries[ ,'Country'] #save list of names of countries in a vector
+authors <- MostProdAuthors[1:10,1]
+authors
+#save list of names of countries in a vector, but only keep these with >=20 publications
+authors <- trimws(authors) #remove white space after country name
+
+net_matrix <- as.matrix(NetMatrix) #convert counts to numeric matrix
+author_matrix <- net_matrix[authors, authors] #reduce matrix to the list of top countries
+#diag(small_matrix) <- 0 #get rid of collaboration with same country
+author_matrix[lower.tri(author_matrix)] <- 0 # getting rid of lower triangle (as this is duplication of info)
+
+circos.clear() #prep for plotting
+mycolour <- viridis(7, alpha = 1, begin = 0, end = 1, option = "D")
+mycolour <- mycolour[sample(1:10)]
+chordDiagramFromMatrix(author_matrix, grid.col = mycolour) #plotting
+
+#network plot
+
+```
+
 ```{Country collaborations}
-
-bib <- metaTagExtraction(bib, Field = "AU_CO", sep = ";") #we need to extract countries from the affiliations first
-
 #Chord diagram of country collaboration (cc)
-#TODO
-bib_cc <- metaTagExtraction(bib, Field = "AU1_CO", sep = ";") 
-bib_cc <- metaTagExtraction(bib_cc, Field = "AU_CO", sep = ";") 
-NetMatrix2 <- biblioNetwork(bib_cc, analysis = "collaboration", 
-                           network = "countries", sep = ";")
 
-net_matrix2 <- as.matrix(NetMatrix2)
-#net_matrix2 <-net_matrix[rownames(NetMatrix2), countries]
-diag(net_matrix2) <- 0 #get rid of collaboration with same country
-net_matrix2
+bib_cc <- metaTagExtraction(bib_coup, Field = "AU_CO", sep = ";") #we need to extract countries from the affiliations first
+NetMatrix <- biblioNetwork(bib_cc, analysis = "collaboration", network = "countries", sep = ";")
 
-# getting rid of lower triangle (as this is duplication of info)
-net_matrix2[lower.tri(net_matrix2)] <- 0 
+results <- biblioAnalysis(bib_cc, sep = ";")
+S2 <- summary(object = results, k = 20 ,pause = FALSE) #pick top 20 countries
+S2
+MostProdCountries <- S2$MostProdCountries #extract names of countries
+MostProdCountries$Articles <- as.numeric(MostProdCountries$Articles) #change column to numeric
+#countries <- MostProdCountries[ ,'Country'] #save list of names of countries in a vector
+countries <- MostProdCountries[1:7,'Country']
+countries
+#save list of names of countries in a vector, but only keep these with >=20 publications
+countries <- trimws(countries) #remove white space after country name
 
-#colnames(net_matrix2) - change to title case:
-colnames(net_matrix2) <- str_to_title(colnames(net_matrix2))
-#rownames(net_matrix2) - change to title case:
-rownames(net_matrix2) <- str_to_title(rownames(net_matrix2))
-#Fix "Usa" to "USA" :
-colnames(net_matrix2)[colnames(net_matrix2) == "Usa"] <- "USA"
-rownames(net_matrix2)[rownames(net_matrix2) == "Usa"] <- "USA"
-#change "UNITED KINGDOM" to "UK" for easier plotting:
-colnames(net_matrix2)[colnames(net_matrix2) == "United Kingdom"] <- "UK"
-rownames(net_matrix2)[rownames(net_matrix2) == "United Kingdom"] <- "UK"
+net_matrix <- as.matrix(NetMatrix) #convert counts to numeric matrix
+small_matrix <- net_matrix[countries, countries] #reduce matrix to the list of top countries
+#diag(small_matrix) <- 0 #get rid of collaboration with same country
+small_matrix[lower.tri(small_matrix)] <- 0 # getting rid of lower triangle (as this is duplication of info)
 
+circos.clear() #prep for plotting
+mycolour <- viridis(7, alpha = 1, begin = 0, end = 1, option = "D")
+mycolour <- mycolour[sample(1:7)]
+chordDiagramFromMatrix(small_matrix, grid.col = c("orange", "olivedrab2", "olivedrab", "mediumpurple", "cadetblue4", "deepskyblue", "darkorchid4")) #plotting
+
+install.packages(viridis)
+library(viridis)
 library(circlize)
 library(igraph)
 circos.clear()
 
 ```
 
+```{Author bibliometric coupling}
 
-```{Keyword occurrences}
-NetMatrix <- biblioNetwork(bib, analysis = "co-occurrences", network = "author_keywords", sep = ";")
-net <- networkPlot(NetMatrix, n = 20, Title = "Keyword co-occurance", type = "fruchterman", size = T, remove.multiple = FALSE, labelsize = 0.7, edgesize = 5) #keyword occurrencestop 20
+NetMatrix <- biblioNetwork(bib, analysis = "coupling", network = "authors", sep = ";")
+net = networkPlot(NetMatrix, weighted = NULL, n = 10, Title = "Authors' bibliographic coupling", type = "fruchterman", size = 5, remove.multiple = TRUE, labelsize = 0.8) #bibliographic coupling for top 10 authors
 
-#conceptual structure of keywords
-CS <- conceptualStructure(bib,field="ID", method="MCA", minDegree=4, clust=8 ,k.max=3, stemming=FALSE, labelsize=10, documents=10)
+```
+
+```{Keyword co-occurrence}
+#Chord diagram of keyword collaboration (terms)
+
+bib_term <- metaTagExtraction(bib_coup, Field = "AU_DE", sep = ";") #we need to extract countries from the affiliations first
+NetMatrix2 <- biblioNetwork(bib_term, analysis = "co-occurrences", network = "keywords", sep = ";")
+
+results <- biblioAnalysis(bib_term, sep = ";")
+top20 <- summary(object = results, k = 20 ,pause = FALSE) #pick top 20 terms
+top20
+most.common.terms <- top20$MostRelKeywords #extract names of countries
+most.common.terms$Articles <- as.numeric(most.common.terms$Articles) #change column to numeric
+#countries <- MostProdCountries[ ,'Country'] #save list of names of countries in a vector
+terms <- most.common.terms[1:10, 3] #save list of names of countries in a vector, but only keep these with >=20 publications
+terms
+terms <- trimws(terms) #remove white space after country name
+
+net_matrix2 <- as.matrix(NetMatrix2) #convert counts to numeric matrix
+term_matrix <- net_matrix2[terms, terms] #reduce matrix to the list of top countries
+#diag(small_matrix) <- 0 #get rid of collaboration with same country
+term_matrix[lower.tri(term_matrix)] <- 0 # getting rid of lower triangle (as this is duplication of info)
+
+circos.clear() #prep for plotting
+mycolour <- viridis(7, alpha = 1, begin = 0, end = 1, option = "D")
+mycolour <- mycolour[sample(1:10)]
+par(cex = 0.5, mar = c(0, 0, 0, 0))
+
+chordDiagramFromMatrix(term_matrix, grid.col = mycolour) #plotting
+```
+
+```{Chord diagram to show publications on Amphibian Orders}
+
+bib_order <- metaTagExtraction(bib_coup, Field = "orderName", sep = ";") #we need to extract countries from the affiliations first
+NetMatrix3 <- biblioNetwork(bib_order, analysis = "coupling", network = "orderName", sep = ";")
+
+results <- biblioAnalysis(bib_term, sep = ";")
+top20 <- summary(object = results, k = 20 ,pause = FALSE) #pick top 20 terms
+top20
+most.common.terms <- top20$MostRelKeywords #extract names of countries
+most.common.terms$Articles <- as.numeric(most.common.terms$Articles) #change column to numeric
+#countries <- MostProdCountries[ ,'Country'] #save list of names of countries in a vector
+terms <- most.common.terms[1:10, 3] #save list of names of countries in a vector, but only keep these with >=20 publications
+terms
+terms <- trimws(terms) #remove white space after country name
+
+net_matrix2 <- as.matrix(NetMatrix2) #convert counts to numeric matrix
+term_matrix <- net_matrix2[terms, terms] #reduce matrix to the list of top countries
+#diag(small_matrix) <- 0 #get rid of collaboration with same country
+term_matrix[lower.tri(term_matrix)] <- 0 # getting rid of lower triangle (as this is duplication of info)
+
+circos.clear() #prep for plotting
+mycolour <- viridis(7, alpha = 1, begin = 0, end = 1, option = "D")
+mycolour <- mycolour[sample(1:10)]
+par(cex = 0.5, mar = c(0, 0, 0, 0))
+
+chordDiagramFromMatrix(term_matrix, grid.col = mycolour) #plotting
+```
+
+```{Order proportion in publications}
+
+#Plot proportion of amphibian order focus in publications:
+           
+#attempt 1                          
+ggplot(bib_coup,aes(x= "", fill=orderName)) + 
+  geom_bar()+
+  ggtitle("Order") +
+  coord_polar("y", start=0) #plotting, but has weird parameters 
+
+#attempt 2
+library(scales)
+#trial
+data.frame(bib_coup) %>% 
+  group_by(orderName) %>% 
+  mutate(cnt = n(),
+         pct = percent(cnt / nrow(.), accuracy = 1)) %>%
+  unique %>% ungroup %>% 
+  mutate(place = cumsum(cnt) - cnt/2) %>% 
+ggplot(data = ., 
+         aes(x = factor(1), weight = cnt, fill = factor(orderName))) + 
+  geom_bar(position = "stack") +  scale_y_continuous(breaks = seq(0, length(bib_coup), length(bib_coup)/4), labels = c("0", "25%", "50%", "75%", "100%")) + 
+  coord_polar(theta='y') +
+  geom_text(aes(x = 1.1, y = place, label = pct)) +
+  theme(axis.text.y = element_blank(), 
+        axis.title.y = element_blank(), 
+        axis.ticks.y = element_blank(),
+        axis.title.x = element_blank()) +
+  labs(fill = "Order") #plotting but weird text, and different proportions to the others
 
 ```
 
