@@ -1,0 +1,197 @@
+---
+title: "BEES3041_CLIMATE CHANGE&MARINE MAMMALS"
+author: "Xiaoxuan Jiang"
+date: '2022-08-01'
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#install & upload packages
+
+install.packages("bibliometrix", dependencies=TRUE)
+library(bibliometrix)
+library(tidyverse)
+```
+
+```{r}
+#upload Scopus data
+
+bib <- convert2df("~/Downloads/3041 Project Code/data/scopus.bib", dbsource = "scopus", format = "bibtex") # Convert to a bibliometric data frame
+names(bib)
+dim(bib) # 963 38 
+#bib$CR[1] #contains Cited References
+#write.csv(bib, "data//Neal_scopus_full.csv", row.names = FALSE) #if you want to save this data frame as a csv file
+```
+
+```{r}
+#upload Rayyan data
+
+screened <- read.csv("~/Downloads/3041 Project Code/data/rayyan.csv")
+names(screened)
+dim(screened) # 253 19
+
+#screened$notes[1] #contains export info, decisions and labels
+
+#filter rows that do not contain the string 'Included' or 'Maybe' in the notes column
+
+screened %>% filter(!grepl('Excluded', notes)) %>% filter(!grepl('Maybe', notes)) -> screened_included
+dim(screened_included)
+
+#extract record labels from notes column - i.e. string after "RAYYAN-LABELS: "
+screened_included$labels <- sub(".*RAYYAN-LABELS: ", "", screened_included$notes)
+screened_included$labels[1:10] #view first 10 strings
+labels_list <- str_split_fixed(screened_included$labels, "," , 8) #split labels into individual species
+labels_list <- as.vector(labels_list) #put species into a vector
+labels_list
+labels_list <- labels_list[labels_list != ""] #take away the 
+labels_list 
+unique_list <- unique(labels_list)
+unique_list
+table(labels_list) #visualise the species frequencies
+labels_df <- data.frame(table(labels_list),stringsAsFactors = FALSE)
+labels_df # data frame with species and presence in publications
+
+
+table(screened_included$labels) #one label messed up (missing in Rayyan): screened_included[235,] #key == rayyan-171377150 - should be "Bird,Other,Marine Mammals" 
+
+dim(screened_included) #
+screened_included %>% filter(grepl('scopus', url)) %>% nrow() # 298 records from Scopus (these records have doi contained in their url string), some of these records were excluded during Rayyan screening
+```
+
+```{r}
+#The field 'TI2' will now be used for merging info from onto bib data frame
+bib_url <- left_join(bib, screened_included %>% dplyr::select(url, title, year, journal, labels), by = "url")
+dim(bib_url) #1507 all records, both included and excluded - use lables column to separate these
+table(is.na(bib_url$labels)) #253 records with labels (these were included, if no lebels - not included)
+
+#only keep rows with labels
+bib_url %>% filter(!is.na(labels)) -> bib_url_included
+dim(bib_url_included) #253 records included
+table(bib_url_included$labels) #these can be separated into different columns, one for each group of animals
+names(bib_url_included)
+```
+
+```{r}
+#before joining by title, need to tidy up titles
+
+# Removing all punctuation and extra white spaces in bib object, in order to compare dataframes by Title:
+bib$TI2 <- str_replace_all(bib$TI,"[:punct:]","") %>% str_replace_all(.,"[ ]+", " ") 
+
+# Remove all punctuation and extra white spaces in screened_included object, in order to compare dataframes by Title:
+screened_included$TI2 <- str_to_upper(str_replace_all(screened_included$title,"[:punct:]","")) %>% str_replace_all(.,"[ ]+", " ")
+
+# The field 'TI2' will now be used for merging info from onto bib data frame
+bib_title <- left_join(bib, screened_included %>% dplyr::select(url, title, TI2, year, journal, labels), by = "TI2")
+table(is.na(bib_title$labels)) #283 records with labels, these were included
+
+#only keep rows with labels
+bib_title %>% filter(!is.na(labels)) -> bib_title_included
+dim(bib_title_included) #283 records included
+table(bib_title_included$labels) 
+names(bib_title_included)
+```
+
+```{r}
+#Basic information of publications 
+
+# Preliminary descriptive analyses using summary function
+results <- biblioAnalysis(bib_title_included, sep = ";")
+
+#summary(object = results, k = 10, pause = TRUE) #display a series of summary tables
+plot(results, k = 10, pause = TRUE) #this takes top 10 values from each table
+#5 diagrams can be used in basic data analysis
+```
+
+```{r}
+#Country of first author  affiliation - map
+
+library(ggthemes)
+library (cowplot)
+
+bib_title_included <- metaTagExtraction(bib_title_included, Field = "AU_CO", sep = ";") #we need to extract countries from the affiliations first
+bib_title_included %>% group_by(AU_CO) %>% count() %>% filter(!is.na(AU_CO)) -> firstcountrycounts
+firstcountrycounts$AU_CO1 <- sub("([A-Za-z]+).*", "\\1", firstcountrycounts$AU_CO)
+world_map <- map_data("world") %>% 
+  filter(! long > 180)
+
+firstcountrycounts$region <- str_to_title(firstcountrycounts$AU_CO1)
+firstcountrycounts$region[firstcountrycounts$region == "Usa"] <- "USA" #Fix "Usa" to "USA" :
+firstcountrycounts$region[firstcountrycounts$region == "United"] <- "UK" #fix to "UK"
+firstcountrycounts$region[firstcountrycounts$region == "South"] <- "South Africa"
+firstcountrycounts$region[firstcountrycounts$region == "New"] <- "New Zealand"
+firstcountrycounts$region[firstcountrycounts$region == "Czech"] <- "Czech Republic"
+emptymap <- tibble(region = unique(world_map$region), n = rep(0,length(unique(world_map$region)))) #create table with all counts as 0
+
+fullmap <- left_join(emptymap, firstcountrycounts, by = "region") #join with actual counts table
+fullmap$n <- fullmap$n.x + fullmap$n.y # make new column for fixed counts
+fullmap$n[is.na(fullmap$n)] <- 0 #change NA to 0 for regions with no counts
+
+Fig8 <- fullmap %>% 
+  ggplot(aes(fill = n, map_id = region)) +
+  geom_map(map = world_map) +
+  expand_limits(x = world_map$long, y = world_map$lat) +
+  theme_map(line_size = 0.5) + 
+  theme(legend.position="right") +
+  scale_fill_gradient(low = "#FEE08B", high = "#D53E4F",
+ limits = c(1, 12),
+      guide = guide_colorbar(direction = "vertical.")) +
+  guides(fill = guide_colourbar(barwidth = unit(15, units = "mm"), barheight = unit(20, units = "mm")))
+Fig8
+```
+
+```{r}
+# Chord Diagram of the most productive countries
+
+install.packages ( "circlize" )
+library(circlize)
+library(igraph)
+bib_title_included2 <- metaTagExtraction(bib_title_included, Field = "AU_CO", sep = ";") 
+NetMatrix <- biblioNetwork(bib_title_included2, analysis = "collaboration", network = "countries", sep = ";")
+
+results <- biblioAnalysis(bib_title_included2, sep = ";")
+S2 <- summary(object = results, k = 20 ,pause = FALSE) #pick top 20 countries
+MostProdCountries <- S2$MostProdCountries #extract names of countries
+MostProdCountries$Articles <- as.numeric(MostProdCountries$Articles) #change column to numeric
+#countries <- MostProdCountries[ ,'Country'] #save list of names of countries in a vector
+countries <- MostProdCountries[1:7,'Country'] #save list of names of countries in a vector, but only keep these with >=20 publications
+countries <- trimws(countries) #remove white space after country name
+
+net_matrix <- as.matrix(NetMatrix) #convert counts to numeric matrix
+small_matrix <- net_matrix[countries, countries] #reduce matrix to the list of top countries
+#diag(small_matrix) <- 0 #get rid of collaboration with same country
+small_matrix[lower.tri(small_matrix)] <- 0 # getting rid of lower triangle (as this is duplication of info)
+
+circos.clear() #prep for plotting
+chordDiagramFromMatrix(small_matrix) #plotting
+```
+
+```{r}
+# heatmap
+
+SAI1 <- read.csv("~/Downloads/data/SAI1.csv")
+names(SAI1)
+dim(SAI1)
+SAI1
+row.names(SAI1) <- SAI1$Species
+SAI1 <- SAI1[,2:5]
+SAI1_matrix <- data.matrix(SAI1)
+SAI1_matrix
+library(RColorBrewer)
+coul <- colorRampPalette(brewer.pal(8, "OrRd"))(25)
+SAI2_heatmap <- heatmap(SAI1_matrix,cexCol=1.3, Rowv=NA, Colv=NA, xlab="Impacts", col = coul, scale="column")
+SAI1_heatmap <- heatmap(SAI1_matrix,cexCol=1.3,  Rowv=NA, Colv=NA, xlab="Impacts", col = terrain.colors(256), scale="column")
+```
+
+```{r}
+# Title Co-occurrence
+
+TE <- termExtraction(bib_title_included, Field = "TI", ngrams = 1,
+remove.numbers=TRUE, remove.terms=NULL, keep.terms=NULL, verbose=TRUE)
+
+NetMatrix <- biblioNetwork(TE, analysis = "co-occurrences", 
+network = "titles", sep = ";")
+
+net <- networkPlot(NetMatrix, n = 40, type = "fruchterman", Title = "Title Terms Co-occurrence",size = T, remove.multiple = FALSE, labelsize = 0.7, edgesize = 5) 
+```
